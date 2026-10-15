@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spin the Wheel - Arabic Letters</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Arial,"Noto Sans Arabic",sans-serif;background:linear-gradient(135deg,#1a103c,#3c2067);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}.app{width:100%;max-width:520px;background:rgba(25,15,50,0.85);border:3px solid rgba(255,255,255,0.15);border-radius:24px;box-shadow:0 18px 45px rgba(0,0,0,0.4);padding:20px;text-align:center}.title{font-size:clamp(22px,4vw,30px);font-weight:800;color:#ffdf6d;margin-bottom:6px}.instruction{font-size:clamp(15px,2.5vw,18px);color:#f0e6ff;margin-bottom:20px}.wheel-container{position:relative;width:280px;height:280px;margin:0 auto 20px}.pointer{position:absolute;top:-15px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:15px solid transparent;border-right:15px solid transparent;border-top:25px solid #ffdf6d;z-index:10;filter:drop-shadow(0 3px 3px rgba(0,0,0,0.3))}canvas{width:100%;height:100%;border-radius:50%;box-shadow:0 0 25px rgba(0,0,0,0.5);border:5px solid #ffdf6d;transition:transform 4s cubic-bezier(0.15, 0.9, 0.2, 1)}.controls{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap}.spin-btn{background:linear-gradient(135deg,#ffdf6d,#f57c00);color:#1a103c;border:0;border-radius:999px;padding:12px 30px;font-size:18px;font-weight:900;cursor:pointer;box-shadow:0 6px 18px rgba(245,124,0,0.4);transition:transform 0.2s,filter 0.2s}.spin-btn:hover{transform:scale(1.05);filter:brightness(1.1)}.spin-btn:disabled{opacity:0.5;cursor:not-allowed}.action-btn{background:rgba(255,255,255,0.15);color:#ffdf6d;border:2px solid rgba(255,255,255,0.3);border-radius:999px;padding:12px 24px;font-size:18px;font-weight:900;cursor:pointer;display:none;box-shadow:0 6px 18px rgba(0,0,0,0.2);transition:background 0.2s}.action-btn:hover{background:rgba(255,255,255,0.25)}.result-display{margin-top:18px;min-height:70px;font-size:20px;font-weight:800;color:#ffdf6d}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="title">Spin the Wheel</div>
+  <div class="instruction">Spin the wheel to learn letter names and sounds!</div>
+  
+  <div class="wheel-container">
+    <div class="pointer"></div>
+    <canvas id="wheelCanvas" width="400" height="400"></canvas>
+  </div>
+
+  <div class="controls">
+    <button class="spin-btn" id="spinBtn" onclick="spinWheel()">Spin Wheel 🎡</button>
+    <button class="action-btn" id="removeBtn" onclick="removeSelectedSlice()">Remove Letter ❌</button>
+    <button class="action-btn" id="restartBtn" onclick="restartGame()">Play Again 🔄</button>
+  </div>
+  
+  <div class="result-display" id="resultDisplay"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('wheelCanvas');
+const ctx = canvas.getContext('2d');
+const spinBtn = document.getElementById('spinBtn');
+const removeBtn = document.getElementById('removeBtn');
+const restartBtn = document.getElementById('restartBtn');
+const resultDisplay = document.getElementById('resultDisplay');
+
+const letterForms = {
+  'ا': ['ا', 'ـا'],
+  'ب': ['بـ', 'ـبـ', 'ـب', 'ب'],
+  'ت': ['تـ', 'ـتـ', 'ـت', 'ت'],
+  'ث': ['ثـ', 'ـثـ', 'ـث', 'ث'],
+  'ج': ['جـ', 'ـجـ', 'ـج', 'ج'],
+  'ح': ['حـ', 'ـحـ', 'ـح', 'ح'],
+  'خ': ['خـ', 'ـخـ', 'ـخ', 'خ']
+};
+
+const colors = ['#ff3366', '#3366cc', '#43a047', '#ff9800', '#9c27b0', '#00bcd4', '#e91e63'];
+
+let activeSlices = [];
+let currentAngle = 0;
+let isSpinning = false;
+let selectedIndex = null;
+let audioCtx = null;
+
+function playSound(type) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    if (type === 'tick') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(600, now);
+      g.gain.setValueAtTime(0.04, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      o.start(now); o.stop(now + 0.04);
+    } else if (type === 'select') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(440, now);
+      o.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+      g.gain.setValueAtTime(0.1, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      o.start(now); o.stop(now + 0.2);
+    } else if (type === 'remove') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'square';
+      o.frequency.setValueAtTime(200, now);
+      o.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+      g.gain.setValueAtTime(0.08, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      o.start(now); o.stop(now + 0.15);
+    } else if (type === 'win') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(523.25, now);
+      o.frequency.setValueAtTime(659.25, now + 0.1);
+      o.frequency.setValueAtTime(783.99, now + 0.2);
+      g.gain.setValueAtTime(0.12, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      o.start(now); o.stop(now + 0.4);
+    }
+  } catch(e) {}
+}
+
+function initSlices() {
+  const baseKeys = ['ا', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ'];
+  activeSlices = baseKeys.map(k => ({
+    base: k,
+    form: letterForms[k][Math.floor(Math.random() * letterForms[k].length)]
+  }));
+}
+
+function drawWheel(angle = 0) {
+  const width = canvas.width;
+  const height = canvas.height;
+  const center = width / 2;
+  const radius = center - 10;
+  const total = activeSlices.length;
+  
+  ctx.clearRect(0, 0, width, height);
+  if (total === 0) return;
+
+  const sliceAngle = (2 * Math.PI) / total;
+
+  ctx.save();
+  ctx.translate(center, center);
+  ctx.rotate(angle);
+
+  activeSlices.forEach((slice, i) => {
+    const startAngle = i * sliceAngle;
+    const endAngle = (i + 1) * sliceAngle;
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.save();
+    const midAngle = startAngle + sliceAngle / 2;
+    const textRadius = radius * 0.65;
+    const x = textRadius * Math.cos(midAngle);
+    const y = textRadius * Math.sin(midAngle);
+
+    ctx.translate(x, y);
+    ctx.rotate(-angle);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 44px Arial';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(slice.form, 0, 0);
+    ctx.restore();
+  });
+
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(center, center, 25, 0, 2 * Math.PI);
+  ctx.fillStyle = '#ffdf6d';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+}
+
+function spinWheel() {
+  if (isSpinning || activeSlices.length === 0) return;
+  isSpinning = true;
+  spinBtn.disabled = true;
+  removeBtn.style.display = 'none';
+  restartBtn.style.display = 'none';
+  resultDisplay.textContent = "Spinning...";
+
+  activeSlices.forEach(slice => {
+    const forms = letterForms[slice.base];
+    slice.form = forms[Math.floor(Math.random() * forms.length)];
+  });
+  activeSlices.sort(() => Math.random() - 0.5);
+
+  const minSpins = 4;
+  const extraDegrees = Math.random() * 360;
+  const totalDegrees = minSpins * 360 + extraDegrees;
+  const duration = 4000;
+  const startTimestamp = performance.now();
+  const startAngle = currentAngle;
+  let lastTickAngle = startAngle;
+
+  function animate(timestamp) {
+    const elapsed = timestamp - startTimestamp;
+    const progress = Math.min(elapsed / duration, 1);
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+    currentAngle = startAngle + (totalDegrees * Math.PI / 180) * easeProgress;
+
+    if (Math.abs(currentAngle - lastTickAngle) > (Math.PI / 8)) {
+      playSound('tick');
+      lastTickAngle = currentAngle;
+    }
+
+    drawWheel(currentAngle);
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      isSpinning = false;
+      calculateResult();
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function calculateResult() {
+  const total = activeSlices.length;
+  const sliceAngleDegrees = 360 / total;
+  const normalizedAngle = (currentAngle * (180 / Math.PI)) % 360;
+  const adjustedAngle = (360 - normalizedAngle + 270) % 360;
+  selectedIndex = Math.floor(adjustedAngle / sliceAngleDegrees) % total;
+  
+  const item = activeSlices[selectedIndex];
+
+  playSound('select');
+  resultDisplay.innerHTML = `Selected Letter: <span style="color:#ffdf6d; font-size:36px; font-weight:bold;">${item.form}</span>`;
+  removeBtn.style.display = 'inline-block';
+}
+
+function removeSelectedSlice() {
+  if (selectedIndex === null || activeSlices.length === 0) return;
+  
+  playSound('remove');
+  activeSlices.splice(selectedIndex, 1);
+  selectedIndex = null;
+  removeBtn.style.display = 'none';
+  
+  if (activeSlices.length > 0) {
+    resultDisplay.textContent = "Great! Spin again for the next letter.";
+    spinBtn.disabled = false;
+    drawWheel(currentAngle);
+  } else {
+    playSound('win');
+    drawWheel(currentAngle);
+    resultDisplay.innerHTML = "🎉 <span style='color:#ffdf6d; font-size:24px;'>Wonderful job! You finished all letters!</span> 🎉";
+    spinBtn.style.display = 'none';
+    restartBtn.style.display = 'inline-block';
+  }
+}
+
+function restartGame() {
+  initSlices();
+  currentAngle = 0;
+  selectedIndex = null;
+  restartBtn.style.display = 'none';
+  spinBtn.style.display = 'inline-block';
+  spinBtn.disabled = false;
+  resultDisplay.textContent = "";
+  drawWheel(0);
+}
+
+initSlices();
+drawWheel(0);
+</script>
+</body>
+</html>
